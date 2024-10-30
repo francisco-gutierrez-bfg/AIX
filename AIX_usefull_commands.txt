@@ -1,0 +1,327 @@
+AIX Commands:
+=============
+
+
+Restart snmpd for centreon remotely:
+====================================
+./rscript.sh aphilum136h centreon/snmp_restart.sh
+
+
+Scan for new disks:
+-------------------
+Discover new devices with: cfgmgr
+The command cfgmgr needs to be run with root permissions
+
+Increase filesystems size:
+--------------------------
+
+  Check filsystem:
+  ================
+  df -g /oracle/PHE/sapdata5
+
+  Check volume name where the filsystems is located:
+  ==================================================
+  lslv phedata5 | grep -i volume
+
+  Check available space: 
+  ======================
+  lsvg <volume_name from above command> | grep -i free
+
+  If enough space, then proceed to increase:
+  ==========================================
+  Increase MAX LPs limits:
+  chvg -P 64K <VG_NAME>
+  
+  Change sizes:
+  chfs -a size=10G /oracle/PHE/sapdata5
+  chfs -a size=10G /opt/commvault
+
+Increase volumen size after changing disk size:
+-----------------------------------------------
+To increase the size of a Logical Volume Manager (LVM) in AIX after increasing the disk size, follow these steps. This process assumes you have already increased the disk size at the hardware level or through your virtual machine manager. The steps involve rescanning the physical volume, updating the volume group, and resizing the logical volume and file system.
+
+Step-by-Step Process
+--------------------
+1- Rescan the Physical Volume (PV): Inform AIX about the new size of the physical volume.
+
+    chvg -g <vg_name>
+
+2- Verify the New Size: Check that the physical volume has recognized the new size.
+    lsvg -l to check disks and identify the target disk where the size has been added
+   Verify the identified disk 
+    lspv <hdiskX>
+   Replace <hdiskX> with your specific disk identifier (e.g., hdisk0).
+
+3- Extend the Logical Volume (LV): Increase the size of the logical volume to use the new space available in the PV.
+    extendlv <lv_name> <new_size>
+   Replace <lv_name> with the name of your logical volume and <new_size> with the amount you want to increase. 
+   You can specify the size in logical partitions (LPs) or in size units like MB, GB, etc. For instance, to add 50 GB:
+    extendlv lv01 50G
+
+4- Resize the File System: Expand the file system to utilize the increased size of the logical volume.
+    chfs -a size=+<increment> <mount_point>
+   Replace <increment> with the size to add and <mount_point> with the mount point of the file system. To add 50 GB, you would use:
+    chfs -a size=+50G /data
+   Example
+   Let's say you have increased the size of hdisk0 from 100 GB to 200 GB, and it is part of vg01. 
+   The logical volume lv01 in this volume group is mounted on /data.
+
+5- Rescan the Physical Volume:
+    chvg -g vg01
+
+6- Verify the New Size:
+    lspv hdisk0
+
+7- Extend the Logical Volume:
+    extendlv lv01 100G
+   This command increases lv01 by 100 GB.
+
+8- Resize the File System:
+    chfs -a size=+100G /data
+
+9- Increase swap
+   - Check current swap:
+        lsps -a
+   - Identify swap's VG:
+        lsvg -l rootvg | grep paging
+   - Identify PP units size:
+        lsvg rootvg | grep "PP SIZE"
+  
+        Sample output:
+         aphilum605h:/home/root # lsvg rootvg | grep "PP SIZE"
+         VG STATE:           active                   PP SIZE:        128 megabyte(s)
+        This means every PP size is 128mb
+        So, in case you want to increase swap by 16GB...
+        Formula: Final size in MB / system defined PP size = Final Size in PP's
+        Ex:
+         I want to get 16GB in PP units:
+         16384MB / 128MB = 128
+
+   - Get Swap size in GB:
+       lsps -a | awk 'NR>1 {printf "%s\t%s\t%s\t%.2fGB\t%s\t%s\t%s\t%s\n", $1, $2, $3, $4/1024, $5, $6, $7, $8}'
+
+   - Extend swap LV:
+        extendlv hd<x> <PP's>
+        Ex: extendlv hd6 128
+
+Delete files older than "X" days:
+---------------------------------
+
+ find . -mtime +<x> -exec rm -f {} \;
+
+ find . -type f -mtime +<x> -exec rm -f {} \;
+
+ ls -latr | grep <pattern> | awk '{print $NF}' | xargs rm
+ Ex:
+  ls -latr | grep Aug | awk '{print $NF}' | xargs rm
+
+
+
+User commands:
+
+Create user:
+------------
+./rscript.sh <server> tusers/create_user.sh <account>
+
+i.e:
+  ./rscript.sh aphilum162h tusers/create_user.sh t0107001
+
+Reset user password:
+--------------------
+./rscript.sh <server> tusers/reset_pwd.sh <account>
+
+i.e:
+ ./rscript.sh aphilum119h tusers/reset_pwd.sh t0107001
+
+
+Count unsuccessful logins:
+--------------------------
+lsuser -a unsuccessful_login_count userid
+
+
+Reset unsuccessful logins:
+--------------------------
+chsec -f /etc/security/lastlog -a unsuccessful_login_count=0 -s a0702041 userid
+
+
+check i pass is expired:
+------------------------
+lsuser -f oracle | grep expires
+
+
+Unlock account:
+---------------
+chuser account_locked=false a0702041 userid  a3001250  party=08
+
+Check password expiration:
+--------------------------
+lsuser -a account_locked expires oracle
+
+
+Lock account:
+-------------
+chuser account_locked=true userid
+
+
+Check if account is locked:
+---------------------------
+lsuser userid
+
+Avoid asking for password change after setting a new user os new password:
+
+pwdadm -c <user_id>
+
+
+File and directory size usefull commands:
+=========================================
+
+ls -l AIX-PPC.tar | awk '{ print $5 / (1024^3) " GB" }'  --> file or dir size in GB
+
+istat <filename> or <dir name> -> Gives you detailed information about the file or dir
+
+Performance commands:
+=====================
+
+Displaying top CPU_consuming processes:
+#ps aux | head -1; ps aux | sort -rn +2 | head -10
+
+Displaying top 10 memory-consuming processes:
+#ps aux | head -1; ps aux | sort -rn +3 | head
+
+Displaying process in order of being penalized:
+#ps -eakl | head -1; ps -eakl | sort -rn +5
+
+Displaying process in order of priority:
+#ps -eakl | sort -n +6 | head
+
+Displaying process in order of nice value
+#ps -eakl | sort -n +7
+
+Displaying the process in order of time
+#ps vx | head -1;ps vx | grep -v PID | sort -rn +3 | head -10
+
+Displaying the process in order of real memory use
+#ps vx | head -1; ps vx | grep -v PID | sort -rn +6 | head -10
+
+Displaying the process in order of I/O
+#ps vx | head -1; ps vx | grep -v PID | sort -rn +4 | head -10
+
+Displaying WLM classes
+#ps -a -o pid, user, class, pcpu, pmem, args
+
+Determining process ID of wait processes:
+#ps vg | head -1; ps vg | grep -w wait
+
+Wait process bound to CPU
+#ps -mo THREAD -p
+
+Cpu usage with priority levels
+#topas -P
+
+
+HMC 
+###
+
+Dump clean commands:
+====================
+
+Remove temporary HMC files which have not been modified during the last day (24 hours) from all file systems:
+
+ chhmcfs -o f -d 3
+
+Remove all temporary HMC files from all file systems:
+
+ chhmcfs -o f -d 0
+
+Remove temporary HMC files which have not been modified during the last 36 hours from the /var file system:
+
+ chhmcfs -o f -h 72 -f /var
+
+Remove temporary HMC files from the /dump file system to free up to 10000 MB:
+
+ chhmcfs -o f -s 10000 -f /dump
+
+
+Retrieve managed systems names:
+ lssyscfg -r sys -F name
+
+check if the led is active:
+ lsled -r sa -t phys -m <managed_system>
+
+Check led status on specific system
+ lsled -r sa -t phys -m <managed_system>
+
+Turn off led on specific system:
+ chled -r sa -t phys -m <managed_system> -o off
+
+Check led status in all managed systems:
+ for i in $(lssyscfg -r sys -F name); do echo "$i $(lsled -r sa -t phys -m $i)"; done
+
+Turn led off on each HCM server:
+================================
+chled -r sa -t phys -m <sever-name> -o off 
+Ex:
+chled -r sa -t phys -m Server-B-8202-E4D-SN21DD87T -o off 
+
+Serviceable events:
+===================
+
+Check Open events:
+-------------------
+
+* Full details:
+   lssvcevents -t hardware | grep "status=Open"
+
+* Filtering and printing specific columns to get a beter and usefull view:
+  Note: Printed fields (problem_number, refcode, status, sys_name (HMC hostname)
+   lssvcevents -t hardware | grep "status=Open" | grep E332FFFF | cut -d',' -f1,4,5
+
+* Filtering and printing problem_number of a specific event, in this example the event is E332FFFF:
+   lssvcevents -t hardware | grep "status=Open" | grep E332FFFF | cut -d',' -f1 | cut -d'=' -f2
+
+Close specific event:
+---------------------
+for i in $(lssvcevents -t hardware | grep "status=Open" | grep E332FFFF | cut -d',' -f1 | cut -d'=' -f2); do chsvcevent -p $i -h $(lshmc -n | sed 's/,/\n/g' | grep "^hostname=" | cut -d"=" -f2) -o close; done
+
+Close all incidents found:
+for i in $(lssvcevents -t hardware | grep "status=Open" | cut -d',' -f1 | cut -d'=' -f2); do chsvcevent -p $i -h $(lshmc -n | sed 's/,/\n/g' | grep "^hostname=" | cut -d"=" -f2) -o close; done
+
+
+VIOS command to show network configs:
+=====================================
+oem_setup_env
+lscfg -v | egrep "ent|Network Address"
+
+
+Asible remote commands:
+=======================
+
+You can run remote commands from ansible server aphilum140h:
+ansible -i <inventory_path> <all or single hostname> -b -m shell -a "<command>"
+
+I.E:
+----
+ansible -i amas_aix all -b -m shell -a "crontab -l | grep -iE 'backup.FULL|backup.ORA'"
+
+
+control-M:
+==========
+As "controlmp" user:
+--------------------
+
+Stop and start agent:
+shut-ag && start-ag
+
+Check service status:
+ag_diag_comm  <-- On SAP server
+
+Config file location:
+/home/controlmp/ctm/data/CONFIG.dat
+
+Logs location:
+/home/controlmp/ctm/proclog/
+
+Disabling SSL:
+Go to /home/controlmp/ctm/data/CONFIG.dat and set "COMMOPT" line to "SSL=N"
+Save changes and restart the agent:
+ shut-ag && start-ag

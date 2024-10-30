@@ -1,0 +1,53 @@
+#!/usr/bin/expect -f
+# HMC IP Addresses:
+# Please use the following IP's as arguments on the script:
+# aphiluh100h: 10.209.3.140
+# aphiluh200h: 10.209.1.141
+# aphiluh300h: 10.209.1.46
+
+# Set variables
+set arg1 [lindex $argv 0];
+set password "Cu2morow"
+match_max 1000
+set timeout 20
+set hmc_user "hscroot"
+set hmc_password "Cu2morow"
+
+if {[llength $arg1] == 0} {
+  puts stderr "Usage: $argv0 HMC IP Address"
+  exit 1
+}
+
+# Start the SSH session
+spawn ssh $hmc_user@$arg1
+
+# Expect the password prompt and send the password
+expect {
+    "yes/no" {
+        send "yes\r"
+        expect "*?assword" { send "$hmc_password\r" }
+    }
+    "*?assword" { send "$hmc_password\r" }
+}
+
+# Expect the shell prompt
+expect "$hmc_user@"
+
+# Send the HMC command
+send { for i in $(lssvcevents -t hardware | grep 'status=Open' | grep E332FFFF | cut -d',' -f1 | cut -d'=' -f2); do chsvcevent -p $i -h aphiluh100h -o close; done; }
+
+# Capture and print the output
+expect {
+    "$hmc_user@" {
+        set output $expect_out(buffer)
+        puts $output
+    }
+}
+
+# Exit the SSH session
+send "exit\r"
+expect eof
+
+# To test later
+# send "for i in $(lssvcevents -t hardware | grep 'status=Open' | grep E332FFFF | cut -d',' -f1 | cut -d'=' -f2); do chsvcevent -p $i -h aphiluh100h -o close; done\r"
+# send "chhmcfs -o f -d 3 && chhmcfs -o f -d 0 && chhmcfs -o f -h 24 -f /var && chhmcfs -o f -s 100 -f /dump && chsvcevent -p `lssvcevents -t hardware | grep 'status=Open' | grep E332FFFF | cut -d',' -f1 | cut -d'=' -f2` -h aphiluh100h -o close\r"
